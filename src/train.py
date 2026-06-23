@@ -239,7 +239,7 @@ def main():
     scaler = GradScaler('cuda')
     stopper = EarlyStopping(patience=10, mode="max")
     best_acc = 0.0
-    checkpoint_dir = Path("outputs/checkpoints")
+    checkpoint_dir = PROJECT_ROOT / "outputs" / "checkpoints"
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     # 记录训练曲线
@@ -292,6 +292,8 @@ def main():
         json.dump(history, f, indent=2)
 
     try:
+        import os as _os
+        _os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt

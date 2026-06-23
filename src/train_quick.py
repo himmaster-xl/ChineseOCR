@@ -163,6 +163,8 @@ def main():
 
     # 画曲线
     try:
+        import os as _os
+        _os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
