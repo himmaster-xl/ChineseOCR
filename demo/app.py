@@ -73,33 +73,18 @@ class HandwritingRecognizer:
             else:
                 self.labels = [f"class_{i}" for i in range(self.cfg.model.num_classes)]
 
-    def _to_pil(self, output) -> Image.Image:
-        """将 Gradio 各种可能的输出统一转为 PIL Image。"""
-        if output is None:
-            return None
-        # dict → 提取图像数据
-        if isinstance(output, dict):
-            for key in ["composite", "image", "background"]:
-                val = output.get(key)
-                if val is not None:
-                    output = val
-                    break
-        # numpy array → PIL
-        if isinstance(output, np.ndarray):
-            output = Image.fromarray(output)
-        # 确保是 PIL Image
-        if not isinstance(output, Image.Image):
-            return None
-        return output
-
     @torch.no_grad()
-    def _predict(self, output) -> dict:
-        """通用推理方法。"""
-        pil_img = self._to_pil(output)
-        if pil_img is None:
+    def recognize(self, upload_output) -> dict:
+        """识别上传的手写图片。"""
+        if upload_output is None:
+            return {}
+        # Gradio 6 Image 可能返回 PIL 或 ndarray
+        if isinstance(upload_output, np.ndarray):
+            upload_output = Image.fromarray(upload_output)
+        if not isinstance(upload_output, Image.Image):
             return {}
 
-        img = pil_img.convert("L").resize((112, 112), Image.BILINEAR)
+        img = upload_output.convert("L").resize((112, 112), Image.BILINEAR)
         img_array = np.array(img, dtype=np.uint8)
         tensor = self.transform(img_array).unsqueeze(0).to(self.device)
 
@@ -107,62 +92,35 @@ class HandwritingRecognizer:
         probs = torch.softmax(logits, dim=1)[0]
         topk_probs, topk_indices = probs.topk(5)
 
-        # Gradio 6 Label: {label: confidence_float}
         return {
             self.labels[idx.item()]: round(prob.item(), 4)
             for idx, prob in zip(topk_indices, topk_probs)
         }
 
-    def recognize_sketch(self, sketch_output) -> dict:
-        """识别画板输入。"""
-        return self._predict(sketch_output)
-
-    def recognize_upload(self, upload_output):
-        """识别上传的图片。"""
-        return self._predict(upload_output)
-
 
 def build_interface(recognizer: HandwritingRecognizer):
-    """构建 Gradio 界面。"""
+    """构建 Gradio 界面（仅上传识别）。"""
     with gr.Blocks(title="手写汉字识别") as demo:
         gr.Markdown(
             """
             # ✍️ 手写汉字识别
-            基于 CNN (ResNet) / ViT，支持 3,490 个常用汉字识别。
-            **两种使用方式**: 左侧画板鼠标书写，或右侧上传手写图片。
+            基于 CNN (ResNet)，支持 3,490 个汉字识别，Top-1 准确率 98.5%。
             """
         )
 
-        with gr.Row():
-            with gr.Column():
-                sketch = gr.Paint(
-                    label="手写画板（写一个汉字）",
-                    width=280, height=280,
-                    image_mode="L",
-                )
-                sketch_btn = gr.Button("识别画板文字", variant="primary")
+        with gr.Column():
+            upload = gr.Image(
+                label="上传手写图片",
+                type="pil",
+                image_mode="L",
+            )
+            btn = gr.Button("识别", variant="primary")
+            result = gr.Label(label="识别结果", num_top_classes=5)
 
-            with gr.Column():
-                upload = gr.Image(
-                    label="上传手写图片",
-                    type="pil",
-                    image_mode="L",
-                )
-                upload_btn = gr.Button("识别上传图片", variant="primary")
-
-        with gr.Row():
-            sketch_result = gr.Label(label="画板识别结果", num_top_classes=5)
-            upload_result = gr.Label(label="上传识别结果", num_top_classes=5)
-
-        sketch_btn.click(
-            fn=recognizer.recognize_sketch,
-            inputs=[sketch],
-            outputs=[sketch_result],
-        )
-        upload_btn.click(
-            fn=recognizer.recognize_upload,
+        btn.click(
+            fn=recognizer.recognize,
             inputs=[upload],
-            outputs=[upload_result],
+            outputs=[result],
         )
 
     return demo
