@@ -107,9 +107,10 @@ class HandwritingRecognizer:
         probs = torch.softmax(logits, dim=1)[0]
         topk_probs, topk_indices = probs.topk(5)
 
+        # Gradio 6 Label: {label: confidence_float}
         return {
-            f"Top-{i+1}": f"{self.labels[idx.item()]} ({prob.item():.1%})"
-            for i, (idx, prob) in enumerate(zip(topk_indices, topk_probs))
+            self.labels[idx.item()]: round(prob.item(), 4)
+            for idx, prob in zip(topk_indices, topk_probs)
         }
 
     def recognize_sketch(self, sketch_output) -> dict:
