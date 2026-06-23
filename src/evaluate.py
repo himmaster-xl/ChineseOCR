@@ -11,7 +11,8 @@ import sys
 from pathlib import Path
 
 # 支持 PyCharm 一键运行：将项目根目录加入搜索路径
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import torch
 from torch.utils.data import DataLoader
@@ -68,13 +69,26 @@ def main():
     parser.add_argument("--checkpoint", type=str, required=True, help="Model checkpoint path")
     args = parser.parse_args()
 
-    cfg = Config.from_yaml(args.config)
+    # 解析相对路径（PyCharm 工作目录可能不是项目根目录）
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = PROJECT_ROOT / config_path
+    cfg = Config.from_yaml(str(config_path))
+
+    checkpoint_path = Path(args.checkpoint)
+    if not checkpoint_path.is_absolute():
+        checkpoint_path = PROJECT_ROOT / checkpoint_path
+
+    hdf5_path = Path(cfg.data.hdf5_path)
+    if not hdf5_path.is_absolute():
+        hdf5_path = PROJECT_ROOT / hdf5_path
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"设备: {device}")
 
     # 加载测试数据
     test_ds = HDF5Dataset(
-        cfg.data.hdf5_path, split="test",
+        str(hdf5_path), split="test",
         transform=get_val_transforms(cfg.model.image_size),
     )
     test_loader = DataLoader(
@@ -94,7 +108,7 @@ def main():
         num_classes=cfg.model.num_classes,
     ).to(device)
 
-    checkpoint = torch.load(args.checkpoint, map_location=device)
+    checkpoint = torch.load(str(checkpoint_path), map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     print(f"已加载 checkpoint: epoch {checkpoint['epoch']}, loss {checkpoint['loss']:.4f}")
 

@@ -12,7 +12,8 @@ import sys
 from pathlib import Path
 
 # 支持 PyCharm 一键运行：将项目根目录加入搜索路径
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import torch
 import torch.nn as nn
@@ -139,18 +140,28 @@ def main():
     args = parser.parse_args()
 
     # ---- 加载配置 ----
-    cfg = Config.from_yaml(args.config)
+    # 解析相对路径（PyCharm 运行目录可能不是项目根目录）
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = PROJECT_ROOT / config_path
+    cfg = Config.from_yaml(str(config_path))
     set_seed(42)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"设备: {device}")
 
     # ---- 构建数据加载器 ----
+    # HDF5 路径也支持相对路径解析
+    hdf5_path = Path(cfg.data.hdf5_path)
+    if not hdf5_path.is_absolute():
+        hdf5_path = PROJECT_ROOT / hdf5_path
+    hdf5_path = str(hdf5_path)
+
     train_ds = HDF5Dataset(
-        cfg.data.hdf5_path, split="train",
+        hdf5_path, split="train",
         transform=get_train_transforms(cfg.model.image_size),
     )
     val_ds = HDF5Dataset(
-        cfg.data.hdf5_path, split="val",
+        hdf5_path, split="val",
         transform=get_val_transforms(cfg.model.image_size),
     )
 

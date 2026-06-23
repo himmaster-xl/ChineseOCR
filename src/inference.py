@@ -14,7 +14,8 @@ import sys
 from pathlib import Path
 
 # 支持 PyCharm 一键运行：将项目根目录加入搜索路径
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
 import torch
 import numpy as np
@@ -93,7 +94,24 @@ def main():
     parser.add_argument("--top_k", type=int, default=5, help="显示 Top-K 结果")
     args = parser.parse_args()
 
-    cfg = Config.from_yaml(args.config)
+    # 解析相对路径
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = PROJECT_ROOT / config_path
+    cfg = Config.from_yaml(str(config_path))
+
+    checkpoint_path = Path(args.checkpoint)
+    if not checkpoint_path.is_absolute():
+        checkpoint_path = PROJECT_ROOT / checkpoint_path
+
+    image_path = Path(args.image)
+    if not image_path.is_absolute():
+        image_path = PROJECT_ROOT / image_path
+
+    hdf5_path = Path(cfg.data.hdf5_path)
+    if not hdf5_path.is_absolute():
+        hdf5_path = PROJECT_ROOT / hdf5_path
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 加载模型
@@ -107,18 +125,18 @@ def main():
         num_classes=cfg.model.num_classes,
     ).to(device)
 
-    checkpoint = torch.load(args.checkpoint, map_location=device)
+    checkpoint = torch.load(str(checkpoint_path), map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     print(f"已加载模型 (epoch {checkpoint['epoch']})")
 
     # 加载标签列表
-    label_list = load_label_list(cfg.data.hdf5_path)
+    label_list = load_label_list(str(hdf5_path))
 
     # 预测
-    results = predict(model, args.image, label_list, device, args.top_k)
+    results = predict(model, str(image_path), label_list, device, args.top_k)
 
     print(f"\n{'='*40}")
-    print(f"图片: {args.image}")
+    print(f"图片: {image_path}")
     print(f"识别结果 (Top-{args.top_k}):")
     print("-" * 40)
     for rank, (char, conf) in enumerate(results, 1):
