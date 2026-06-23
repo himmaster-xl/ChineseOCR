@@ -161,3 +161,90 @@ class TestTransformerEncoder:
         # 检查 norm 和 attention 的参数
         assert enc.norm1.weight.grad is not None
         assert enc.attn.qkv.weight.grad is not None
+
+
+from model.transformer import Transformer
+
+
+class TestTransformer:
+    """堆叠 Transformer 测试"""
+
+    def test_output_shape(self):
+        """12 层 Transformer 不改变 shape"""
+        transformer = Transformer(num_layers=12, hidden_dim=384, num_heads=6)
+        x = torch.randn(2, 785, 384)  # cls_token + 784 patches
+
+        out = transformer(x)
+
+        assert out.shape == (2, 785, 384)
+
+    def test_final_layernorm(self):
+        """最后一层 LayerNorm 确保输出标准化"""
+        transformer = Transformer(num_layers=2)  # 2层便于测试
+        x = torch.randn(1, 10, 384)
+        out = transformer(x)
+
+        # LayerNorm 后均值接近 0，方差接近 1
+        assert out.mean().abs() < 0.5
+
+    def test_gradient_flows_through_all_layers(self):
+        """梯度能通过所有层回传"""
+        transformer = Transformer(num_layers=3, hidden_dim=64, num_heads=2)
+        x = torch.randn(1, 10, 64)
+        loss = transformer(x).sum()
+        loss.backward()
+
+        grad_norms = [
+            p.grad.norm().item()
+            for p in transformer.parameters()
+            if p.grad is not None
+        ]
+        # 所有参数的梯度都应非零
+        assert all(g > 0 for g in grad_norms), "所有层都应有梯度"
+
+
+from model.vit import VisionTransformer
+
+
+class TestVisionTransformer:
+    """完整 ViT 模型测试"""
+
+    @pytest.fixture
+    def model(self):
+        """创建 ViT-Small 实例用于测试"""
+        return VisionTransformer(
+            image_size=112, patch_size=4, in_channels=1,
+            hidden_dim=384, num_layers=12, num_heads=6,
+            num_classes=3755,
+        )
+
+    def test_output_shape(self, model):
+        """输入 (B, 1, 112, 112) -> 输出 (B, 3755)"""
+        x = torch.randn(2, 1, 112, 112)
+        out = model(x)
+        assert out.shape == (2, 3755), f"期望 (2, 3755)，实际 {out.shape}"
+
+    def test_forward_features(self, model):
+        """forward_features 返回 [CLS] token (B, 384)"""
+        x = torch.randn(2, 1, 112, 112)
+        features = model.forward_features(x)
+        assert features.shape == (2, 384), f"期望 (2, 384)，实际 {features.shape}"
+
+    def test_cls_token_is_learned(self, model):
+        """cls_token 是可学习参数"""
+        assert model.cls_token.requires_grad, "cls_token 应可学习"
+        assert model.cls_token.shape == (1, 1, 384)
+
+    def test_pos_embed_shape(self, model):
+        """位置编码覆盖所有 patch + [CLS]"""
+        expected_num = (112 // 4) ** 2 + 1  # 784 + 1 = 785
+        assert model.pos_embed.shape == (1, expected_num, 384)
+
+    def test_gradient_flow_full(self, model):
+        """端到端梯度回传正常"""
+        x = torch.randn(1, 1, 112, 112)
+        loss = model(x).sum()
+        loss.backward()
+
+        # 检查分类头的梯度
+        assert model.head.weight.grad is not None
