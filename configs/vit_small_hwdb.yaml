@@ -1,7 +1,8 @@
-# Model  (patch=8 → 197 tokens, 注意力快16倍; 6层训练更快)
+# Model  (type: "vit" 或 "resnet")
 model:
+  type: "resnet"       # ← 切换模型: "vit" / "resnet"
   image_size: 112
-  patch_size: 8
+  patch_size: 8        # 仅 ViT 使用
   in_channels: 1
   hidden_dim: 384
   num_layers: 6
@@ -12,13 +13,13 @@ model:
 
 # Training
 train:
-  batch_size: 64
-  epochs: 100
+  batch_size: 128
+  epochs: 50
   lr: 0.0003
   weight_decay: 0.05
-  warmup_epochs: 10
+  warmup_epochs: 5
   label_smoothing: 0.1
-  grad_accum_steps: 2
+  grad_accum_steps: 1
 
 # Data
 data:

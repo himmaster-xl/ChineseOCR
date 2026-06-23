@@ -22,6 +22,7 @@ from src.config import Config
 from src.data.dataset import HDF5Dataset
 from src.data.transforms import get_val_transforms
 from src.model.vit import VisionTransformer
+from src.model.resnet import ResNet
 
 
 @torch.no_grad()
@@ -98,19 +99,26 @@ def main():
     print(f"测试样本: {len(test_ds):,}")
 
     # 加载模型
-    model = VisionTransformer(
-        image_size=cfg.model.image_size,
-        patch_size=cfg.model.patch_size,
-        in_channels=cfg.model.in_channels,
-        hidden_dim=cfg.model.hidden_dim,
-        num_layers=cfg.model.num_layers,
-        num_heads=cfg.model.num_heads,
-        num_classes=cfg.model.num_classes,
-    ).to(device)
+    model_type = getattr(cfg.model, 'type', 'vit')
+    if model_type == 'resnet':
+        model = ResNet(
+            in_channels=cfg.model.in_channels,
+            num_classes=cfg.model.num_classes,
+        ).to(device)
+    else:
+        model = VisionTransformer(
+            image_size=cfg.model.image_size,
+            patch_size=cfg.model.patch_size,
+            in_channels=cfg.model.in_channels,
+            hidden_dim=cfg.model.hidden_dim,
+            num_layers=cfg.model.num_layers,
+            num_heads=cfg.model.num_heads,
+            num_classes=cfg.model.num_classes,
+        ).to(device)
 
     checkpoint = torch.load(str(checkpoint_path), map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    print(f"已加载 checkpoint: epoch {checkpoint['epoch']}, loss {checkpoint['loss']:.4f}")
+    print(f"已加载 checkpoint ({model_type}): epoch {checkpoint['epoch']}, loss {checkpoint['loss']:.4f}")
 
     # 评估
     top1, top5, total = evaluate(model, test_loader, device)

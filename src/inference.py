@@ -24,6 +24,7 @@ from PIL import Image
 from src.config import Config
 from src.data.transforms import get_val_transforms
 from src.model.vit import VisionTransformer
+from src.model.resnet import ResNet
 
 
 def load_label_list(hdf5_path: str) -> list:
@@ -115,19 +116,26 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # 加载模型
-    model = VisionTransformer(
-        image_size=cfg.model.image_size,
-        patch_size=cfg.model.patch_size,
-        in_channels=cfg.model.in_channels,
-        hidden_dim=cfg.model.hidden_dim,
-        num_layers=cfg.model.num_layers,
-        num_heads=cfg.model.num_heads,
-        num_classes=cfg.model.num_classes,
-    ).to(device)
+    model_type = getattr(cfg.model, 'type', 'vit')
+    if model_type == 'resnet':
+        model = ResNet(
+            in_channels=cfg.model.in_channels,
+            num_classes=cfg.model.num_classes,
+        ).to(device)
+    else:
+        model = VisionTransformer(
+            image_size=cfg.model.image_size,
+            patch_size=cfg.model.patch_size,
+            in_channels=cfg.model.in_channels,
+            hidden_dim=cfg.model.hidden_dim,
+            num_layers=cfg.model.num_layers,
+            num_heads=cfg.model.num_heads,
+            num_classes=cfg.model.num_classes,
+        ).to(device)
 
     checkpoint = torch.load(str(checkpoint_path), map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
-    print(f"已加载模型 (epoch {checkpoint['epoch']})")
+    print(f"已加载模型 ({model_type}): epoch {checkpoint['epoch']}")
 
     # 加载标签列表
     label_list = load_label_list(str(hdf5_path))

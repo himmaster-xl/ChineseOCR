@@ -17,7 +17,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torch.amp import GradScaler, autocast
 from tqdm import tqdm
 
@@ -26,6 +26,7 @@ from src.utils import set_seed, EarlyStopping, save_checkpoint
 from src.data.dataset import HDF5Dataset
 from src.data.transforms import get_train_transforms, get_val_transforms
 from src.model.vit import VisionTransformer
+from src.model.resnet import ResNet
 
 
 def train_one_epoch(
@@ -137,6 +138,8 @@ def main():
         "--config", type=str, default="configs/vit_small_hwdb.yaml",
         help="YAML 配置文件路径",
     )
+    parser.add_argument("--fraction", type=float, default=1.0,
+                        help="使用数据比例 (默认1.0=全量, 0.25=25%%)")
     args = parser.parse_args()
 
     # ---- 加载配置 ----
@@ -173,23 +176,41 @@ def main():
         val_ds, batch_size=cfg.train.batch_size,
         shuffle=False, num_workers=cfg.data.num_workers, pin_memory=True,
     )
+    # ── 数据子集采样 ──
+    if args.fraction < 1.0:
+        import numpy as np
+        np.random.seed(42)
+        n_train = int(len(train_ds) * args.fraction)
+        n_val   = int(len(val_ds)   * args.fraction)
+        train_idx = np.random.choice(len(train_ds), n_train, replace=False)
+        val_idx   = np.random.choice(len(val_ds),   n_val,   replace=False)
+        train_ds = Subset(train_ds, train_idx)
+        val_ds   = Subset(val_ds,   val_idx)
+
     print(f"训练样本: {len(train_ds):,}, 验证样本: {len(val_ds):,}")
 
     # ---- 构建模型 ----
-    model = VisionTransformer(
-        image_size=cfg.model.image_size,
-        patch_size=cfg.model.patch_size,
-        in_channels=cfg.model.in_channels,
-        hidden_dim=cfg.model.hidden_dim,
-        num_layers=cfg.model.num_layers,
-        num_heads=cfg.model.num_heads,
-        mlp_ratio=cfg.model.mlp_ratio,
-        num_classes=cfg.model.num_classes,
-        dropout=cfg.model.dropout,
-    ).to(device)
+    model_type = getattr(cfg.model, 'type', 'vit')
+    if model_type == 'resnet':
+        model = ResNet(
+            in_channels=cfg.model.in_channels,
+            num_classes=cfg.model.num_classes,
+        ).to(device)
+    else:
+        model = VisionTransformer(
+            image_size=cfg.model.image_size,
+            patch_size=cfg.model.patch_size,
+            in_channels=cfg.model.in_channels,
+            hidden_dim=cfg.model.hidden_dim,
+            num_layers=cfg.model.num_layers,
+            num_heads=cfg.model.num_heads,
+            mlp_ratio=cfg.model.mlp_ratio,
+            num_classes=cfg.model.num_classes,
+            dropout=cfg.model.dropout,
+        ).to(device)
 
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"参数总量: {total_params:,}")
+    print(f"参数总量: {total_params:,} ({model_type})")
 
     # ---- 优化器 & 损失函数 & 调度器 ----
     optimizer = torch.optim.AdamW(

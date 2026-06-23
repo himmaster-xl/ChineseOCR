@@ -248,3 +248,42 @@ class TestVisionTransformer:
 
         # 检查分类头的梯度
         assert model.head.weight.grad is not None
+
+
+from model.resnet import ResNet
+
+
+class TestResNet:
+    """ResNet CNN 模型测试"""
+
+    def test_output_shape(self):
+        """输入 (B,1,112,112) → 输出 (B,3490)"""
+        model = ResNet(in_channels=1, num_classes=3490)
+        x = torch.randn(2, 1, 112, 112)
+        out = model(x)
+        assert out.shape == (2, 3490), f"期望 (2, 3490)，实际 {out.shape}"
+
+    def test_forward_features(self):
+        """forward_features 返回 (B, 512)"""
+        model = ResNet()
+        x = torch.randn(2, 1, 112, 112)
+        feat = model.forward_features(x)
+        assert feat.shape == (2, 512), f"期望 (2, 512)，实际 {feat.shape}"
+
+    def test_gradient_flow(self):
+        """梯度正常回传"""
+        model = ResNet()
+        x = torch.randn(1, 1, 112, 112)
+        loss = model(x).sum()
+        loss.backward()
+        assert model.fc.weight.grad is not None
+
+    def test_gpu_forward(self):
+        """GPU 前向传播无 OOM"""
+        if not torch.cuda.is_available():
+            return
+        model = ResNet().cuda()
+        x = torch.randn(8, 1, 112, 112, device="cuda")
+        out = model(x)
+        assert out.shape == (8, 3490)
+        torch.cuda.empty_cache()

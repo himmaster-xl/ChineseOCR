@@ -12,8 +12,7 @@ import yaml
 @dataclass
 class ModelConfig:
     """模型架构超参数"""
-    image_size: int
-    patch_size: int
+    # 必填
     in_channels: int
     hidden_dim: int
     num_layers: int
@@ -21,6 +20,10 @@ class ModelConfig:
     mlp_ratio: int
     num_classes: int
     dropout: float
+    # 可选
+    image_size: int = 112
+    patch_size: int = 8
+    type: str = "resnet"
 
 
 @dataclass
