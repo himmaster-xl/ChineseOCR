@@ -61,7 +61,7 @@ def train_one_epoch(
         labels = labels.to(device, non_blocking=True)
 
         # AMP 自动混合精度前向传播
-        with autocast():
+        with autocast('cuda'):
             logits = model(images)
             loss = criterion(logits, labels)
             loss = loss / grad_accum_steps
@@ -109,7 +109,7 @@ def validate(
         images = images.to(device, non_blocking=True)
         labels = labels.to(device, non_blocking=True)
 
-        with autocast():
+        with autocast('cuda'):
             logits = model(images)
             loss = criterion(logits, labels)
 
