@@ -80,3 +80,46 @@ class TestMLP:
         # eval 模式下两次相同输入应完全一致（无随机性）
         out_eval2 = mlp(x)
         assert torch.allclose(out_eval, out_eval2), "eval 模式应确定性输出"
+
+
+from model.attention import MultiHeadAttention
+
+
+class TestMultiHeadAttention:
+    """多头自注意力模块测试"""
+
+    def test_output_shape(self):
+        """MHA 不改变输入序列长度和维度"""
+        mha = MultiHeadAttention(hidden_dim=384, num_heads=6)
+        x = torch.randn(2, 100, 384)
+
+        out = mha(x)
+
+        assert out.shape == (2, 100, 384), f"期望 (2, 100, 384)，实际 {out.shape}"
+
+    def test_deterministic_in_eval(self):
+        """无 mask：eval 模式下输出确定"""
+        mha = MultiHeadAttention()
+        mha.eval()
+        x = torch.randn(1, 10, 384)
+
+        out1 = mha(x)
+        out2 = mha(x)
+
+        # 确定性输出
+        assert torch.allclose(out1, out2, atol=1e-5), "无 dropout 时输出应确定"
+
+    def test_head_dim_division(self):
+        """验证 head_dim = hidden_dim / num_heads"""
+        mha = MultiHeadAttention(hidden_dim=384, num_heads=6)
+        assert mha.head_dim == 64, "384 / 6 = 64"
+
+    def test_gradient_flow(self):
+        """QKV 投影和输出投影均有梯度"""
+        mha = MultiHeadAttention()
+        x = torch.randn(2, 50, 384)
+        loss = mha(x).sum()
+        loss.backward()
+
+        assert mha.qkv.weight.grad is not None
+        assert mha.proj.weight.grad is not None
