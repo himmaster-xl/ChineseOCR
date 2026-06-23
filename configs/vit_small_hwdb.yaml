@@ -23,5 +23,5 @@ train:
 
 # Data
 data:
-  hdf5_path: "data/processed/hwdb.h5"
+  hdf5_path: "data/processed/hwdb_fast.h5"
   num_workers: 4
