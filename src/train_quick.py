@@ -121,6 +121,9 @@ def main():
     criterion = nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
     scaler = GradScaler("cuda")
 
+    # 记录训练曲线
+    history = {"train_loss": [], "val_acc": []}
+
     print(f"{'='*50}")
     for epoch in range(1, args.epochs + 1):
         model.train()
@@ -142,14 +145,44 @@ def main():
             total_loss += loss.item()
             pbar.set_postfix({"loss": f"{loss.item():.3f}"})
 
+        avg_loss = total_loss / len(train_loader)
         acc = validate(model, val_loader, device)
-        print(f"  -> Train Loss: {total_loss/len(train_loader):.4f} | Val Top-1: {acc:.4f}")
+        history["train_loss"].append(avg_loss)
+        history["val_acc"].append(acc)
+        print(f"  -> Train Loss: {avg_loss:.4f} | Val Top-1: {acc:.4f}")
 
-    save_path = PROJECT_ROOT / "outputs" / "checkpoints" / "quick.pt"
-    save_path.parent.mkdir(parents=True, exist_ok=True)
-    save_checkpoint(model, optimizer, args.epochs, total_loss, str(save_path))
+    # 保存模型 + 曲线数据
+    save_dir = PROJECT_ROOT / "outputs" / "checkpoints"
+    save_dir.mkdir(parents=True, exist_ok=True)
+    save_checkpoint(model, optimizer, args.epochs, total_loss,
+                    str(save_dir / "quick.pt"))
+
+    import json
+    with open(save_dir / "quick_history.json", "w") as f:
+        json.dump(history, f, indent=2)
+
+    # 画曲线
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+        ax1.plot(history["train_loss"], "b-o", markersize=4)
+        ax1.set_title("Train Loss")
+        ax1.set_xlabel("Epoch"); ax1.set_ylabel("Loss")
+        ax2.plot(history["val_acc"], "g-o", markersize=4)
+        ax2.set_title("Val Top-1 Accuracy")
+        ax2.set_xlabel("Epoch"); ax2.set_ylabel("Accuracy")
+        fig.tight_layout()
+        fig.savefig(save_dir / "quick_curve.png", dpi=120)
+        print(f"曲线图已保存: {save_dir / 'quick_curve.png'}")
+    except Exception:
+        pass
+
     print(f"\n{'='*50}")
-    print(f"[OK] 快速验证通过！模型: {save_path}")
+    print(f"[OK] 快速验证通过！")
+    print(f"模型: {save_dir / 'quick.pt'}")
+    print(f"曲线: {save_dir / 'quick_history.json'}")
     print(f"正式训练: python src/train.py")
 
     full_train.close()
