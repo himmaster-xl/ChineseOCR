@@ -1,10 +1,10 @@
-# Model
+# Model  (patch=8 → 197 tokens, 注意力快16倍; 6层训练更快)
 model:
   image_size: 112
-  patch_size: 4
+  patch_size: 8
   in_channels: 1
   hidden_dim: 384
-  num_layers: 12
+  num_layers: 6
   num_heads: 6
   mlp_ratio: 4
   num_classes: 3490
@@ -12,13 +12,13 @@ model:
 
 # Training
 train:
-  batch_size: 16
+  batch_size: 64
   epochs: 100
   lr: 0.0003
   weight_decay: 0.05
   warmup_epochs: 10
   label_smoothing: 0.1
-  grad_accum_steps: 8
+  grad_accum_steps: 2
 
 # Data
 data:
