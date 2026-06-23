@@ -123,3 +123,41 @@ class TestMultiHeadAttention:
 
         assert mha.qkv.weight.grad is not None
         assert mha.proj.weight.grad is not None
+
+
+from model.encoder import TransformerEncoder
+
+
+class TestTransformerEncoder:
+    """变压器编码器单层测试"""
+
+    def test_output_shape(self):
+        """单层 Encoder 不改变输入 shape"""
+        enc = TransformerEncoder(hidden_dim=384, num_heads=6)
+        x = torch.randn(2, 100, 384)
+
+        out = enc(x)
+
+        assert out.shape == (2, 100, 384)
+
+    def test_residual_connection(self):
+        """残差连接确保输入信息不被完全覆盖"""
+        enc = TransformerEncoder()
+        x = torch.randn(2, 10, 384)
+
+        out = enc(x)
+
+        # 残差连接 + LayerNorm 后，输出不应全为零且应接近输入尺度
+        assert not torch.allclose(out, x), "经过 Attention+MLP 后应有变化"
+        assert out.std() > 0.01, "输出不该退化"
+
+    def test_gradient_flow(self):
+        """所有子模块参数都有梯度"""
+        enc = TransformerEncoder()
+        x = torch.randn(2, 20, 384)
+        loss = enc(x).sum()
+        loss.backward()
+
+        # 检查 norm 和 attention 的参数
+        assert enc.norm1.weight.grad is not None
+        assert enc.attn.qkv.weight.grad is not None
