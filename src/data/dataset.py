@@ -32,11 +32,32 @@ class HDF5Dataset(Dataset):
     """
 
     def __init__(self, hdf5_path: str, split: str = "train", transform=None):
-        # 打开文件但不立即读取所有数据（h5py 默认延迟加载）
-        self.file = h5py.File(hdf5_path, "r")
-        self.images = self.file[f"{split}/images"]  # shape: (N, H, W)
-        self.labels = self.file[f"{split}/labels"]  # shape: (N,)
+        # 保存参数以便 pickle 后重建
+        self.hdf5_path = hdf5_path
+        self.split = split
         self.transform = transform
+
+        # 打开文件但不立即读取所有数据（h5py 默认延迟加载）
+        self._open()
+
+    def _open(self):
+        """打开 HDF5 文件并获取数据集引用（支持 pickle 后重新打开）。"""
+        self.file = h5py.File(self.hdf5_path, "r")
+        self.images = self.file[f"{self.split}/images"]  # shape: (N, H, W)
+        self.labels = self.file[f"{self.split}/labels"]  # shape: (N,)
+
+    def __getstate__(self):
+        """Pickle 时：排除不可序列化的 h5py 对象。"""
+        state = self.__dict__.copy()
+        del state["file"]
+        del state["images"]
+        del state["labels"]
+        return state
+
+    def __setstate__(self, state):
+        """Unpickle 时：恢复状态并重新打开 HDF5 文件。"""
+        self.__dict__.update(state)
+        self._open()
 
     def __len__(self) -> int:
         """返回数据集中的样本总数。"""

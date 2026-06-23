@@ -18,7 +18,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.cuda.amp import GradScaler, autocast
+from torch.amp import GradScaler, autocast
 from tqdm import tqdm
 
 from src.config import Config
@@ -215,7 +215,7 @@ def main():
     )
 
     # ---- 训练循环 ----
-    scaler = GradScaler()
+    scaler = GradScaler('cuda')
     stopper = EarlyStopping(patience=10, mode="max")
     best_acc = 0.0
     checkpoint_dir = Path("outputs/checkpoints")
