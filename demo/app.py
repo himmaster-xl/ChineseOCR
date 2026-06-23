@@ -107,17 +107,17 @@ def build_interface(recognizer: HandwritingRecognizer):
         gr.Markdown(
             """
             # ✍️ 手写汉字识别
-            基于 Vision Transformer (ViT-Small)，支持 3,755 个常用汉字识别。
+            基于 CNN (ResNet) / ViT，支持 3,490 个常用汉字识别。
             **两种使用方式**: 左侧画板鼠标书写，或右侧上传手写图片。
             """
         )
 
         with gr.Row():
             with gr.Column():
-                sketch = gr.Sketchpad(
+                sketch = gr.Paint(
                     label="手写画板（写一个汉字）",
-                    brush_radius=3,
-                    shape=(280, 280),
+                    width=280, height=280,
+                    image_mode="L",
                 )
                 sketch_btn = gr.Button("识别画板文字", variant="primary")
 
