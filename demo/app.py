@@ -10,16 +10,21 @@
 """
 
 import argparse
+import sys
+from pathlib import Path
+
+# 支持 PyCharm 一键运行
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
 import torch
 import numpy as np
 from PIL import Image
 import gradio as gr
 
-import sys
-sys.path.insert(0, "src")
-from config import Config
-from data.transforms import get_val_transforms
-from model.vit import VisionTransformer
+from src.config import Config
+from src.data.transforms import get_val_transforms
+from src.model.vit import VisionTransformer
 
 
 class HandwritingRecognizer:
@@ -29,15 +34,23 @@ class HandwritingRecognizer:
         self.cfg = Config.from_yaml(config_path)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model = VisionTransformer(
-            image_size=self.cfg.model.image_size,
-            patch_size=self.cfg.model.patch_size,
-            in_channels=self.cfg.model.in_channels,
-            hidden_dim=self.cfg.model.hidden_dim,
-            num_layers=self.cfg.model.num_layers,
-            num_heads=self.cfg.model.num_heads,
-            num_classes=self.cfg.model.num_classes,
-        ).to(self.device)
+        model_type = getattr(self.cfg.model, 'type', 'vit')
+        if model_type == 'resnet':
+            from src.model.resnet import ResNet
+            self.model = ResNet(
+                in_channels=self.cfg.model.in_channels,
+                num_classes=self.cfg.model.num_classes,
+            ).to(self.device)
+        else:
+            self.model = VisionTransformer(
+                image_size=self.cfg.model.image_size,
+                patch_size=self.cfg.model.patch_size,
+                in_channels=self.cfg.model.in_channels,
+                hidden_dim=self.cfg.model.hidden_dim,
+                num_layers=self.cfg.model.num_layers,
+                num_heads=self.cfg.model.num_heads,
+                num_classes=self.cfg.model.num_classes,
+            ).to(self.device)
 
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint["model_state_dict"])
@@ -50,7 +63,11 @@ class HandwritingRecognizer:
     def _load_labels(self):
         """从 HDF5 加载汉字标签列表。"""
         import h5py
-        with h5py.File(self.cfg.data.hdf5_path, 'r') as f:
+        from pathlib import Path
+        h5_path = Path(self.cfg.data.hdf5_path)
+        if not h5_path.is_absolute():
+            h5_path = Path(__file__).resolve().parent.parent / h5_path
+        with h5py.File(str(h5_path), 'r') as f:
             if 'labels' in f.attrs:
                 self.labels = list(f.attrs['labels'])
             else:
@@ -133,11 +150,36 @@ def build_interface(recognizer: HandwritingRecognizer):
 def main():
     parser = argparse.ArgumentParser(description="Gradio 手写汉字识别 Demo")
     parser.add_argument("--config", type=str, default="configs/vit_small_hwdb.yaml")
-    parser.add_argument("--checkpoint", type=str, required=True, help="模型 checkpoint")
+    parser.add_argument("--checkpoint", type=str, default=None,
+                        help="模型 checkpoint (默认自动查找 quick.pt 或 best.pt)")
     parser.add_argument("--share", action="store_true", help="创建公开链接")
     args = parser.parse_args()
 
-    recognizer = HandwritingRecognizer(args.config, args.checkpoint)
+    # 自动查找 checkpoint
+    project_root = Path(__file__).resolve().parent.parent
+    if args.checkpoint is None:
+        for candidate in [
+            "outputs/checkpoints/quick.pt",
+            "outputs/checkpoints/best.pt",
+        ]:
+            p = project_root / candidate
+            if p.exists():
+                args.checkpoint = str(p)
+                print(f"自动选择 checkpoint: {p}")
+                break
+        if args.checkpoint is None:
+            print("未找到 checkpoint，请先训练或指定 --checkpoint")
+            return
+
+    # 解析相对路径
+    config_path = Path(args.config)
+    if not config_path.is_absolute():
+        config_path = project_root / config_path
+    checkpoint_path = Path(args.checkpoint)
+    if not checkpoint_path.is_absolute():
+        checkpoint_path = project_root / checkpoint_path
+
+    recognizer = HandwritingRecognizer(str(config_path), str(checkpoint_path))
     demo = build_interface(recognizer)
     demo.launch(share=args.share)
 
