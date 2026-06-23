@@ -73,9 +73,20 @@ class HandwritingRecognizer:
             else:
                 self.labels = [f"class_{i}" for i in range(self.cfg.model.num_classes)]
 
+    def _extract_image(self, sketch_output) -> Image.Image:
+        """从 Gradio 组件输出中提取 PIL 图像。"""
+        if sketch_output is None:
+            return None
+        # Gradio 6: Paint 返回 dict {"composite": PIL.Image, ...}
+        if isinstance(sketch_output, dict):
+            return sketch_output.get("composite")
+        # Gradio 3: Sketchpad 直接返回 PIL Image
+        return sketch_output
+
     @torch.no_grad()
-    def _predict(self, pil_img) -> dict:
+    def _predict(self, sketch_output) -> dict:
         """通用推理方法。"""
+        pil_img = self._extract_image(sketch_output)
         if pil_img is None:
             return {}
 
@@ -92,13 +103,13 @@ class HandwritingRecognizer:
             for i, (idx, prob) in enumerate(zip(topk_indices, topk_probs))
         }
 
-    def recognize_sketch(self, sketch_img) -> dict:
-        """识别画板输入的图片（Gradio Sketchpad 返回 RGB PIL Image）。"""
-        return self._predict(sketch_img)
+    def recognize_sketch(self, sketch_output) -> dict:
+        """识别画板输入。"""
+        return self._predict(sketch_output)
 
-    def recognize_upload(self, upload_img):
-        """识别上传的图片文件。"""
-        return self._predict(upload_img)
+    def recognize_upload(self, upload_output):
+        """识别上传的图片。"""
+        return self._predict(upload_output)
 
 
 def build_interface(recognizer: HandwritingRecognizer):
