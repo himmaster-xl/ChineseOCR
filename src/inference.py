@@ -10,13 +10,19 @@
 """
 
 import argparse
+import sys
+from pathlib import Path
+
+# 支持 PyCharm 一键运行：将项目根目录加入搜索路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 import torch
 import numpy as np
 from PIL import Image
 
-from config import Config
-from data.transforms import get_val_transforms
-from model.vit import VisionTransformer
+from src.config import Config
+from src.data.transforms import get_val_transforms
+from src.model.vit import VisionTransformer
 
 
 def load_label_list(hdf5_path: str) -> list:

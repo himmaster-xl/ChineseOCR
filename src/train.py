@@ -8,7 +8,11 @@ batch_size=128 时显存占用约 5-6GB，留有余量。
 """
 
 import argparse
+import sys
 from pathlib import Path
+
+# 支持 PyCharm 一键运行：将项目根目录加入搜索路径
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import torch
 import torch.nn as nn
@@ -16,11 +20,11 @@ from torch.utils.data import DataLoader
 from torch.cuda.amp import GradScaler, autocast
 from tqdm import tqdm
 
-from config import Config
-from utils import set_seed, EarlyStopping, save_checkpoint
-from data.dataset import HDF5Dataset
-from data.transforms import get_train_transforms, get_val_transforms
-from model.vit import VisionTransformer
+from src.config import Config
+from src.utils import set_seed, EarlyStopping, save_checkpoint
+from src.data.dataset import HDF5Dataset
+from src.data.transforms import get_train_transforms, get_val_transforms
+from src.model.vit import VisionTransformer
 
 
 def train_one_epoch(
