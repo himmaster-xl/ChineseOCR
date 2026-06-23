@@ -73,20 +73,23 @@ class HandwritingRecognizer:
             else:
                 self.labels = [f"class_{i}" for i in range(self.cfg.model.num_classes)]
 
-    def _extract_image(self, sketch_output) -> Image.Image:
-        """从 Gradio 组件输出中提取 PIL 图像。"""
-        if sketch_output is None:
+    def _to_pil(self, output) -> Image.Image:
+        """将 Gradio 各种可能的输出统一转为 PIL Image。"""
+        if output is None:
             return None
-        # Gradio 6: Paint 返回 dict {"composite": PIL.Image, ...}
-        if isinstance(sketch_output, dict):
-            return sketch_output.get("composite")
-        # Gradio 3: Sketchpad 直接返回 PIL Image
-        return sketch_output
+        # dict → 取 composite 或 image 字段
+        if isinstance(output, dict):
+            output = output.get("composite") or output.get("image") or output
+        # numpy array → PIL
+        if isinstance(output, np.ndarray):
+            return Image.fromarray(output)
+        # 已经是 PIL
+        return output
 
     @torch.no_grad()
-    def _predict(self, sketch_output) -> dict:
+    def _predict(self, output) -> dict:
         """通用推理方法。"""
-        pil_img = self._extract_image(sketch_output)
+        pil_img = self._to_pil(output)
         if pil_img is None:
             return {}
 
