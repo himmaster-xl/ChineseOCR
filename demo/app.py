@@ -180,8 +180,8 @@ def main():
     project_root = Path(__file__).resolve().parent.parent
     if args.checkpoint is None:
         for candidate in [
-            "outputs/checkpoints/quick.pt",
             "outputs/checkpoints/best.pt",
+            "outputs/checkpoints/quick.pt",
         ]:
             p = project_root / candidate
             if p.exists():
