@@ -40,3 +40,43 @@ class TestPatchEmbedding:
 
         # 检查投影卷积权重有梯度
         assert pe.proj.weight.grad is not None, "参数应有梯度"
+
+
+from model.mlp import MLP
+
+
+class TestMLP:
+    """MLP 前馈网络测试"""
+
+    def test_shape_preservation(self):
+        """MLP 不改变输入 shape"""
+        mlp = MLP(hidden_dim=384, mlp_ratio=4)
+        x = torch.randn(2, 100, 384)
+
+        out = mlp(x)
+
+        assert out.shape == x.shape, f"MLP 不应改变 shape: {x.shape} -> {out.shape}"
+
+    def test_gradient_flow(self):
+        """两层全连接都有梯度"""
+        mlp = MLP()
+        x = torch.randn(2, 50, 384)
+        loss = mlp(x).sum()
+        loss.backward()
+
+        assert mlp.fc1.weight.grad is not None
+        assert mlp.fc2.weight.grad is not None
+
+    def test_dropout_training_vs_eval(self):
+        """训练模式有 dropout，评估模式关闭"""
+        mlp = MLP(dropout=0.5)
+        x = torch.randn(4, 10, 384)
+
+        mlp.train()
+        out_train = mlp(x)
+        mlp.eval()
+        out_eval = mlp(x)
+
+        # eval 模式下两次相同输入应完全一致（无随机性）
+        out_eval2 = mlp(x)
+        assert torch.allclose(out_eval, out_eval2), "eval 模式应确定性输出"
