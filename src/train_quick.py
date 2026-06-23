@@ -1,15 +1,16 @@
-"""快速验证脚本 — 极小数据量快速跑通全流程，验证 pipeline 无 bug。
+"""快速验证脚本 — 限制步数，约 5 分钟跑通全流程。
 
 用法:
     python src/train_quick.py
 
-默认只取 1% 数据 (~8000 张)，训练 3 个 epoch，应该在 5-10 分钟内完成。
+默认 2 epoch，每 epoch 只跑 30 步，约 5 分钟完成。
 跑通后再用 src/train.py 正式训练。
 """
 
 import argparse
 import sys
 from pathlib import Path
+from itertools import islice
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -29,11 +30,11 @@ from src.model.vit import VisionTransformer
 
 
 @torch.no_grad()
-def validate(model, dataloader, device):
-    """快速验证，只算 Top-1"""
+def validate(model, dataloader, device, max_steps=10):
+    """快速验证，只算 Top-1，限制步数"""
     model.eval()
     correct, total = 0, 0
-    for images, labels in tqdm(dataloader, desc="Val", leave=False):
+    for images, labels in islice(dataloader, max_steps):
         images = images.to(device)
         labels = labels.to(device)
         with autocast("cuda"):
@@ -41,15 +42,15 @@ def validate(model, dataloader, device):
         _, preds = logits.topk(1, dim=1)
         correct += (preds.squeeze() == labels).sum().item()
         total += labels.size(0)
-    return correct / total
+    return correct / total if total > 0 else 0
 
 
 def main():
     parser = argparse.ArgumentParser(description="Quick pipeline validation")
     parser.add_argument("--config", type=str, default="configs/vit_small_hwdb.yaml")
-    parser.add_argument("--fraction", type=float, default=0.01, help="数据比例 (默认 1%)")
-    parser.add_argument("--epochs", type=int, default=3, help="训练轮数")
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--epochs", type=int, default=2, help="训练轮数")
+    parser.add_argument("--steps", type=int, default=30, help="每轮最多步数")
+    parser.add_argument("--batch_size", type=int, default=8)
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -58,15 +59,14 @@ def main():
     cfg = Config.from_yaml(str(config_path))
 
     set_seed(42)
-    # 速度优化（略微牺牲可复现性）
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.benchmark = True
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"设备: {device}")
-    print(f"快速验证: {args.fraction:.0%} 数据 × {args.epochs} epochs, batch={args.batch_size}")
+    print(f"快速验证: {args.epochs} epochs x {args.steps} steps, batch={args.batch_size}")
+    print(f"预计时间: ~{args.epochs * args.steps * 6 // 60} 分钟")
 
-    # ── 数据 ──
     hdf5_path = Path(cfg.data.hdf5_path)
     if not hdf5_path.is_absolute():
         hdf5_path = PROJECT_ROOT / hdf5_path
@@ -77,11 +77,10 @@ def main():
     full_val   = HDF5Dataset(hdf5_path, split="val",
                              transform=get_val_transforms(cfg.model.image_size))
 
+    # 少量随机数据即可验证流程
     np.random.seed(42)
-    n_train = int(len(full_train) * args.fraction)
-    n_val   = int(len(full_val)   * args.fraction)
-    train_idx = np.random.choice(len(full_train), n_train, replace=False)
-    val_idx   = np.random.choice(len(full_val),   n_val,   replace=False)
+    train_idx = np.random.choice(len(full_train), args.steps * args.batch_size, replace=False)
+    val_idx   = np.random.choice(len(full_val),   10 * args.batch_size,      replace=False)
 
     train_ds = Subset(full_train, train_idx)
     val_ds   = Subset(full_val,   val_idx)
@@ -91,9 +90,8 @@ def main():
     val_loader   = DataLoader(val_ds,   batch_size=args.batch_size,
                               shuffle=False, num_workers=0, pin_memory=True)
 
-    print(f"训练: {len(train_ds):,} / 验证: {len(val_ds):,} 样本")
+    print(f"训练样本: {len(train_ds)} / 验证样本: {len(val_ds)}")
 
-    # ── 模型 ──
     model = VisionTransformer(
         image_size=cfg.model.image_size,
         patch_size=cfg.model.patch_size,
@@ -110,12 +108,12 @@ def main():
     criterion = nn.CrossEntropyLoss(label_smoothing=cfg.train.label_smoothing)
     scaler = GradScaler("cuda")
 
-    # ── 训练 ──
     print(f"{'='*50}")
     for epoch in range(1, args.epochs + 1):
         model.train()
         total_loss = 0
-        pbar = tqdm(train_loader, desc=f"Epoch {epoch}/{args.epochs}")
+        pbar = tqdm(islice(train_loader, args.steps),
+                    total=args.steps, desc=f"Epoch {epoch}/{args.epochs}")
         for images, labels in pbar:
             images = images.to(device)
             labels = labels.to(device)
@@ -132,17 +130,14 @@ def main():
             total_loss += loss.item()
             pbar.set_postfix({"loss": f"{loss.item():.3f}"})
 
-        acc = validate(model, val_loader, device)
-        print(f"  -> Train Loss: {total_loss/len(train_loader):.4f} | Val Top-1: {acc:.4f}")
+        acc = validate(model, val_loader, device, max_steps=10)
+        print(f"  -> Train Loss: {total_loss/args.steps:.4f} | Val Top-1: {acc:.4f}")
 
-    # ── 保存 ──
-    checkpoint_dir = PROJECT_ROOT / "outputs" / "checkpoints"
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    save_path = checkpoint_dir / "quick.pt"
+    save_path = PROJECT_ROOT / "outputs" / "checkpoints" / "quick.pt"
+    save_path.parent.mkdir(parents=True, exist_ok=True)
     save_checkpoint(model, optimizer, args.epochs, total_loss, str(save_path))
     print(f"\n{'='*50}")
     print(f"[OK] 快速验证通过！模型: {save_path}")
-    print(f"最终 Val Top-1: {acc:.4f} ({acc*100:.1f}%)")
     print(f"正式训练: python src/train.py")
 
     full_train.close()
