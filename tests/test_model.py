@@ -215,14 +215,14 @@ class TestVisionTransformer:
         return VisionTransformer(
             image_size=112, patch_size=4, in_channels=1,
             hidden_dim=384, num_layers=12, num_heads=6,
-            num_classes=3755,
+            num_classes=3490,
         )
 
     def test_output_shape(self, model):
-        """输入 (B, 1, 112, 112) -> 输出 (B, 3755)"""
+        """输入 (B, 1, 112, 112) -> 输出 (B, 3490)"""
         x = torch.randn(2, 1, 112, 112)
         out = model(x)
-        assert out.shape == (2, 3755), f"期望 (2, 3755)，实际 {out.shape}"
+        assert out.shape == (2, 3490), f"期望 (2, 3490)，实际 {out.shape}"
 
     def test_forward_features(self, model):
         """forward_features 返回 [CLS] token (B, 384)"""

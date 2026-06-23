@@ -7,7 +7,7 @@ model:
   num_layers: 12
   num_heads: 6
   mlp_ratio: 4
-  num_classes: 3755
+  num_classes: 3490
   dropout: 0.1
 
 # Training
