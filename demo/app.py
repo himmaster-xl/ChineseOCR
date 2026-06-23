@@ -77,13 +77,19 @@ class HandwritingRecognizer:
         """将 Gradio 各种可能的输出统一转为 PIL Image。"""
         if output is None:
             return None
-        # dict → 取 composite 或 image 字段
+        # dict → 提取图像数据
         if isinstance(output, dict):
-            output = output.get("composite") or output.get("image") or output
+            for key in ["composite", "image", "background"]:
+                val = output.get(key)
+                if val is not None:
+                    output = val
+                    break
         # numpy array → PIL
         if isinstance(output, np.ndarray):
-            return Image.fromarray(output)
-        # 已经是 PIL
+            output = Image.fromarray(output)
+        # 确保是 PIL Image
+        if not isinstance(output, Image.Image):
+            return None
         return output
 
     @torch.no_grad()
