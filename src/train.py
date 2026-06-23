@@ -242,6 +242,9 @@ def main():
     checkpoint_dir = Path("outputs/checkpoints")
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
+    # 记录训练曲线
+    history = {"train_loss": [], "val_loss": [], "val_top1": [], "val_top5": []}
+
     print(f"\n开始训练 — {cfg.train.epochs} epochs, batch_size={cfg.train.batch_size}")
     print("=" * 60)
 
@@ -253,6 +256,11 @@ def main():
 
         val_loss, top1, top5 = validate(model, val_loader, criterion, device)
         lr_now = optimizer.param_groups[0]["lr"]
+
+        history["train_loss"].append(train_loss)
+        history["val_loss"].append(val_loss)
+        history["val_top1"].append(top1)
+        history["val_top5"].append(top5)
 
         print(
             f"Epoch {epoch:3d}/{cfg.train.epochs} | "
@@ -277,6 +285,32 @@ def main():
             break
 
         scheduler.step()
+
+    # ── 保存曲线 ──
+    import json
+    with open(checkpoint_dir / "history.json", "w") as f:
+        json.dump(history, f, indent=2)
+
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, axes = plt.subplots(1, 3, figsize=(14, 4))
+        axes[0].plot(history["train_loss"], "b-", label="Train")
+        axes[0].plot(history["val_loss"], "r-", label="Val")
+        axes[0].set_title("Loss"); axes[0].set_xlabel("Epoch")
+        axes[0].legend()
+        axes[1].plot(history["val_top1"], "g-o", markersize=3)
+        axes[1].set_title("Val Top-1 Accuracy")
+        axes[1].set_xlabel("Epoch")
+        axes[2].plot(history["val_top5"], "m-o", markersize=3)
+        axes[2].set_title("Val Top-5 Accuracy")
+        axes[2].set_xlabel("Epoch")
+        fig.tight_layout()
+        fig.savefig(checkpoint_dir / "curve.png", dpi=120)
+        print(f"曲线图: {checkpoint_dir / 'curve.png'}")
+    except Exception:
+        pass
 
     print(f"\n训练完成！最佳 Top-1: {best_acc:.4f}")
     train_ds.close()
