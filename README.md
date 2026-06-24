@@ -81,6 +81,71 @@
 准确率: Top-1 98.5%  |  Top-5 99.8%
 ```
 
+## 可选模型: Vision Transformer
+
+```yaml
+# configs/vit_small_hwdb.yaml  改一行即可切换
+model:
+  type: "vit"       # ← 切换为 Transformer
+```
+
+```
+输入 (B, 1, 112, 112) 灰度手写汉字
+        │
+        ▼  src/model/patch_embed.py
+┌─── Patch Embedding ────────────────────┐
+│  Conv2d(1→384, k=8, s=8)               │  切块 + 线性投影
+│  Flatten → Transpose                    │  → (B, 196, 384)
+└────────────────────────────────────────┘
+        │
+        ▼
+┌─── + [CLS] Token + Position Embed ─────┐
+│  [CLS] learnable (1, 1, 384)           │  汇总全图信息的「哨兵」
+│  Pos Embed learnable (1, 197, 384)     │  标记空间位置
+│  拼接 → (B, 197, 384)                  │
+└────────────────────────────────────────┘
+        │
+        ▼  src/model/encoder.py ×6  src/model/transformer.py
+┌─── Transformer Encoder ×6 ─────────────┐
+│  ┌─ LayerNorm ─────────────────────┐    │
+│  │  src/model/attention.py         │    │
+│  │  Multi-Head Self-Attention (6头) │   │
+│  │  QKV(384→1152) → 拆6头每头64维  │   │
+│  │  Attn = Softmax(Q·Kᵀ/√64)·V     │   │
+│  │  → 合并头 → Proj(384→384)       │   │
+│  └────────────────── +残差 ────────┘    │
+│  ┌─ LayerNorm ─────────────────────┐    │
+│  │  src/model/mlp.py               │    │
+│  │  Linear(384→1536) → GELU → Drop  │   │
+│  │  Linear(1536→384) → Drop        │    │
+│  └────────────────── +残差 ────────┘    │
+│                  ×6 层                   │  src/model/transformer.py 堆叠
+│             最终 LayerNorm              │
+└────────────────────────────────────────┘
+        │
+        ▼  src/model/vit.py (Head)
+┌─── Head ──────────────────────────────┐
+│  取 [CLS] token       → (B, 384)       │  CLS 聚合了全图信息
+│  Linear(384 → 3490)   → (B, 3490)     │  分类 logits
+└────────────────────────────────────────┘
+
+参数: ~7.6M  |  token=197, 6层6头, dim=384
+速度: 比 ResNet 慢 5-10× (自注意力 O(N²))
+```
+
+## Model 文件依赖关系
+
+```
+ViT 组件链:
+  patch_embed.py ──┐
+  attention.py  ───┤
+  mlp.py        ───┼──→ encoder.py ──→ transformer.py ──→ vit.py
+                   │      (单层)          (堆叠×6)        (完整模型)
+
+CNN (独立):
+  resnet.py ── 零依赖, 纯 PyTorch 原生组件
+```
+
 ## 项目结构
 
 | 文件 | 功能 |
